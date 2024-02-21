@@ -1,0 +1,278 @@
+
+from flask import Flask, render_template, request, redirect, url_for
+from flask_mysqldb import MySQL
+
+app = Flask(__name__)
+
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'ram.12345'
+app.config['MYSQL_DB'] = 'users'
+user=""
+mysql = MySQL(app)
+
+
+@app.route('/')
+def index():
+    return render_template('home.html')
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    if request.method == 'POST':
+        email=request.form['email']
+        cur = mysql.connection.cursor()
+        cur.execute('SELECT * FROM user')
+        data = cur.fetchall()
+        cur.close()
+
+        for entry in data:
+            cur = mysql.connection.cursor()
+            cur.execute('SELECT * FROM room')
+            data = cur.fetchall()
+            cur.execute('SELECT * FROM request')
+            data2 = cur.fetchall()
+            cur.close()
+            if entry[0]==email:
+                global user
+                user=entry[1]
+                if entry[1]=='admin':
+                    return render_template('admin.html',rooms=data, requests=data2)
+                elif entry[1]=='faculty':
+                    return render_template('faculty.html',rooms=data)
+                elif entry[1]=='student':
+                    return render_template('student.html',rooms=data)
+                
+        return redirect(url_for('index'))
+
+def load_content():
+    email=user
+    cur = mysql.connection.cursor()
+    cur.execute('SELECT * FROM user')
+    data = cur.fetchall()
+    cur.close()
+
+    for entry in data:
+        cur = mysql.connection.cursor()
+        cur.execute('SELECT * FROM room')
+        data = cur.fetchall()
+        cur.execute('SELECT * FROM request')
+        data2 = cur.fetchall()
+        cur.close()
+        if entry[0]==email:
+            if entry[1]=='admin':
+                return render_template('admin.html',rooms=data, requests=data2)
+            elif entry[1]=='faculty':
+                return render_template('faculty.html',rooms=data)
+            elif entry[1]=='student':
+                return render_template('student.html',rooms=data)
+            
+    return redirect(url_for('index'))
+@app.route('/add', methods=['POST'])
+def add_user():
+    if request.method == 'POST':
+        id = request.form['roomid']
+        email = request.form['emailid']
+        cur = mysql.connection.cursor()
+        cur.execute('INSERT INTO room (roomid, emailid) VALUES (%s, %s)', (id, email))
+        mysql.connection.commit()
+        cur.close()
+        return load_content()
+
+@app.route('/approve/<int:id>',methods=['GET'])
+def approve_request(id):
+    if request.method == 'GET':
+        cur = mysql.connection.cursor()
+        cur.execute('DELETE FROM request WHERE roomid = %s', (id,))
+        mysql.connection.commit()
+        cur.close()
+        
+        cur = mysql.connection.cursor()
+        cur.execute('INSERT INTO room (roomid, emailid) VALUES (%s, %s)', (id, 'student'))
+        mysql.connection.commit()
+        cur.close()
+
+        return load_content()
+
+
+@app.route('/request',methods=['POST'])
+def request_room():
+    if request.method == 'POST':
+        purpose = request.form['purpose']
+        roomid = request.form['roomid']
+        capacity = request.form['capacity']
+        cur = mysql.connection.cursor()
+        cur.execute('INSERT INTO request (purpose, roomid, capacity) VALUES (%s, %s, %s)', (purpose, roomid, capacity))
+        mysql.connection.commit()
+        cur.close()
+        return load_content()
+
+@app.route('/delete/<int:id>', methods=['GET'])
+def cancel_room(id):
+    cur = mysql.connection.cursor()
+    cur.execute('DELETE FROM room WHERE roomid = %s', (id,))
+    mysql.connection.commit()
+    cur.close()
+    return load_content()
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+//Admin.html
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h2>Admin Login</h2>
+    <h3>Rooms Booked</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Room ID</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for room in rooms %}
+            <tr>
+                <td>{{ room[0] }}</td>
+                <td>{{ room[1] }}</td>
+                <td><a href="{{ url_for('cancel_room', id=room[0]) }}">Delete</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <h3>Book a room</h3>
+    <form action="{{ url_for('add_user') }}" method="POST">
+        <input type="number" name="roomid" placeholder="RoomID" required>
+        <input type="text" name="emailid" placeholder="EmailID" required>
+        <button type="submit">Submit</button>
+    </form>
+    <h3>Requests from students</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Purpose</th>
+                <th>Room ID</th>
+                <th>Capacity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for request in requests %}
+            <tr>
+                <td>{{ request[0] }}</td>
+                <td>{{ request[1] }}</td>
+                <td>{{ request[2] }}</td>
+                <td><a href="{{ url_for('approve_request', id=request[1]) }}">Approve</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
+
+//Faculty.html
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h2>Faculty Login</h2>
+    <form action="{{ url_for('add_user') }}" method="POST">
+        <input type="number" name="roomid" placeholder="RoomID" required>
+        <input type="text" name="emailid" placeholder="EmailID" required>
+        <button type="submit">Submit</button>
+    </form>
+    <table>
+        <thead>
+            <tr>
+                <th>Room ID</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for room in rooms %}
+            <tr>
+                <td>{{ room[0] }}</td>
+                <td>{{ room[1] }}</td>
+                <td><a href="{{ url_for('cancel_room', id=room[0]) }}">Delete</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
+
+
+//Home.html
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Classroom Booking System</h1>
+    <form action="{{ url_for('signup') }}" method="POST">
+        <input type="text" name="email" placeholder="Email" required>
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
+
+//Student.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Classroom Booking System</h1>
+    <h3>Rooms Booked</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Room ID</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for room in rooms %}
+            <tr>
+                <td>{{ room[0] }}</td>
+                <td>{{ room[1] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <form action="{{ url_for('request_room') }}" method="POST">
+        <input type="text" name="purpose" placeholder="Purpose" required>
+        <input type="number" name="roomid" placeholder="RoomID" required>
+        <input type="number" name="capacity" placeholder="Capacity" required>
+        <button type="submit">Request Room</button>
+    </form>
+</body>
+</html>
