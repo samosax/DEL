@@ -1,0 +1,88 @@
+from flask import Flask, render_template, request, redirect,session, url_for
+from flask_mysqldb import MySQL
+import yaml
+from yaml import FullLoader
+
+app = Flask(__name__)
+app.debug=True
+
+db_path = r'Z:\21PW31\venv\db.yaml'
+db = yaml.load(open(db_path), Loader=FullLoader)
+app.config['MYSQL_HOST'] = db['mysql_host']
+app.config['MYSQL_USER'] = db['mysql_user']
+app.config['MYSQL_PASSWORD'] = db['mysql_password']
+app.config['MYSQL_DB'] = db['mysql_db']
+
+mysql = MySQL(app)
+app.secret_key='abcdefg'
+
+name=""
+
+@app.route('/', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        details=request.form
+        name=details['name1']
+        car=details['car1']
+        mail = details['email1']
+        password = details['pass1']
+        amt=details['bal1']
+        cur=mysql.connection.cursor()
+        cur.execute("Insert into user(name,car_no,email,password,money) values(%s,%s,%s,%s,%s)",(name,car,mail,password,amt))
+        mysql.connection.commit()
+        cur.close()
+    return render_template('login.html')
+
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        details=request.form
+        global name
+        name = details['name']
+        mail = details['email']
+        password = details['pass']
+        cur=mysql.connection.cursor()
+        result=cur.execute("Select * from user where name=%s and email=%s and password=%s",(name,mail,password))
+        if result>0:
+            return redirect("/userpage")
+        else:
+            return render_template('login.html')
+
+@app.route('/userpage', methods=['GET'])
+def userpage():
+    cur=mysql.connection.cursor()
+    cur.execute("Select * from user where name=%s",(name,))
+    data1=cur.fetchall()
+    cur.execute("Select * from transactions where name=%s",(name,))
+    data2=cur.fetchall()
+    if request.method=='Get':
+        return redirect('/')
+    return render_template('index.html',info_table1=data1,info_table2=data2)
+
+@app.route('/pay', methods=['GET','POST'])
+def pay():
+    if request.method=='POST':
+        details=request.form
+        amt=details['amt']
+        cur=mysql.connection.cursor()
+        cur.execute("Select car_no from user where name=%s",(name,))
+        car=cur.fetchone()
+        print(name,car)
+        cur.execute("Select * from user where name=%s",(name,))
+        data1=cur.fetchall()
+        cur.execute("Select * from transactions where name=%s",(name,))
+        data2=cur.fetchall()
+        cur.execute("Select money from user where name=%s",(name,))
+        bal=cur.fetchone()
+        print(amt,bal)
+        if int(amt)<int(bal[0]):
+            deduct=int(bal[0])-int(amt)
+            cur.execute("Insert into transactions values(%s,%s,%s)",(name,car[0],amt))
+            #cur.execute("Upate user set money=%s where name=%s",(str(deduct),name))
+            mysql.connection.commit()
+            cur.close()
+    return render_template('index.html',info_table1=data1,info_table2=data2)
+
+if __name__=='__main__':
+    app.run()
